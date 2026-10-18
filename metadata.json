@@ -1,0 +1,6 @@
+{
+  "name": "MCQ Video Studio Pro",
+  "description": "Universal 16:9 MCQ Video Studio with multi-encoder hardware rendering, Excel/CSV mapping, offline audio, and animations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

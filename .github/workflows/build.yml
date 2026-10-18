@@ -24,8 +24,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
-          log-accepted-android-sdk-licenses: false
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Check or Generate google-services.json
         run: |
@@ -35,7 +34,7 @@ jobs:
               PKG=$(grep -E "namespace\s*[= ]+" app/build.gradle* 2>/dev/null | head -n 1 | sed -E 's/.*["'\'']([^"'\'']+)["'\''].*/\1/' | tr -d '[:space:]')
             fi
             if [ -z "$PKG" ]; then
-              PKG="com.example.app"
+              PKG="com.aistudio.mcqvideostudio.pvmx"
             fi
             echo "Generating fallback app/google-services.json for package: $PKG"
             cat <<EOF > app/google-services.json
@@ -90,17 +89,12 @@ jobs:
           EOF
           fi
 
-      - name: Prepare Gradle Wrapper
+      - name: Generate Gradle Wrapper (correct version)
         run: |
-          if [ -f "gradle/wrapper/gradle-wrapper.properties" ]; then
-            cp gradle/wrapper/gradle-wrapper.properties /tmp/gradle-wrapper.properties.bak
-          fi
-          if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ] || [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 8.11.1
-          fi
-          if [ -f "/tmp/gradle-wrapper.properties.bak" ]; then
-            cp /tmp/gradle-wrapper.properties.bak gradle/wrapper/gradle-wrapper.properties
-          fi
+          # Install a temporary Gradle so we can generate the proper wrapper
+          curl -sL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-9.3.1/bin/gradle wrapper --gradle-version 9.3.1
           chmod +x gradlew
 
       - name: Build Debug APK

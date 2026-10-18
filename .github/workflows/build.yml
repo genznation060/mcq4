@@ -96,7 +96,7 @@ jobs:
             cp gradle/wrapper/gradle-wrapper.properties /tmp/gradle-wrapper.properties.bak
           fi
           if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ] || [ ! -f "gradlew" ]; then
-            gradle wrapper --gradle-version 8.11.1
+            gradle wrapper --gradle-version 8.12
           fi
           if [ -f "/tmp/gradle-wrapper.properties.bak" ]; then
             cp /tmp/gradle-wrapper.properties.bak gradle/wrapper/gradle-wrapper.properties
@@ -104,7 +104,21 @@ jobs:
           chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m" 2>&1 | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "=========================================="
+            echo "CLEAN ERROR SUMMARY (COPY THIS SECTION):"
+            echo "=========================================="
+            grep -E "(> Task .* FAILED|^e: |FAILURE:|What went wrong:|^\* |^  > )" build.log | tail -n 60
+            echo "### Build Error Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            grep -E -A 15 "(> Task .* FAILED|^e: |What went wrong:)" build.log | tail -n 80 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $EXIT_CODE
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

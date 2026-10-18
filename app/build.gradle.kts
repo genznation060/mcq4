@@ -49,20 +49,22 @@ android {
   }
 }
 
-// Auto-create .env.example and .env if missing so the Secrets plugin never fails
+// Auto-create .env files (optional – just so the files exist)
 val envExample = rootProject.file(".env.example")
 if (!envExample.exists()) {
-  envExample.writeText("GEMINI_API_KEY=\n")
+  envExample.writeText("# GEMINI_API_KEY=\n")
 }
 val envFile = rootProject.file(".env")
 if (!envFile.exists()) {
-  envFile.writeText("GEMINI_API_KEY=\n")
+  envFile.writeText("# GEMINI_API_KEY=\n")
 }
 
+// Secrets plugin – ignore GEMINI_API_KEY so it never breaks BuildConfig
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
+  ignoreList.add("GEMINI_API_KEY")          // ← this prevents the "illegal start of expression" error
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

@@ -1,139 +1,105 @@
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+package com.example.bridge
 
-plugins {
-  alias(libs.plugins.android.application)
-  alias(libs.plugins.kotlin.compose)
-  alias(libs.plugins.google.devtools.ksp)
-  alias(libs.plugins.secrets)
-  alias(libs.plugins.google.services)
-}
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import android.util.Log
+import android.webkit.JavascriptInterface
+import android.widget.Toast
+import com.example.encoder.Media3VideoEncoder
+import com.example.util.StorageHelper
 
-android {
-  namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
-
-  defaultConfig {
-    applicationId = "com.aistudio.mcqvideostudio.pvmx"
-    minSdk = 24
-    targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
-
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-  }
-
-  buildTypes {
-    release {
-      isCrunchPngs = false
-      isMinifyEnabled = false
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Uses the default debug signing config so release APKs can also build without a custom .jks file
-      signingConfig = signingConfigs.getByName("debug")
+class AndroidBridge(
+    private val context: Context,
+    private val onToastRequested: (String) -> Unit
+) {
+    companion object {
+        private const val TAG = "AndroidBridge"
     }
-    debug {
-      // Automatically uses Android's built-in default debug keystore
+
+    private val nativeEncoder = Media3VideoEncoder(context)
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun initNativeEncoder(
+        width: Int,
+        height: Int,
+        fps: Int,
+        bitrateMbps: Int,
+        totalFrames: Int,
+        filename: String,
+        base64AudioWav: String?
+    ): Boolean {
+        Log.i(
+            TAG,
+            "initNativeEncoder called: ${width}x$height, ${fps}fps, $bitrateMbps Mbps, frames=$totalFrames, file=$filename"
+        )
+        return nativeEncoder.start(
+            width,
+            height,
+            fps,
+            bitrateMbps,
+            totalFrames,
+            filename,
+            base64AudioWav
+        )
     }
-  }
-  compileOptions {
-    sourceCompatibility = JavaVersion.VERSION_11
-    targetCompatibility = JavaVersion.VERSION_11
-  }
-  buildFeatures {
-    compose = true
-    buildConfig = true
-  }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
-  dependenciesInfo {
-    includeInApk = false
-    includeInBundle = true
-  }
-}
 
-// Auto-create .env files (optional – just so the files exist)
-val envExample = rootProject.file(".env.example")
-if (!envExample.exists()) {
-  envExample.writeText("# GEMINI_API_KEY=\n")
-}
-val envFile = rootProject.file(".env")
-if (!envFile.exists()) {
-  envFile.writeText("# GEMINI_API_KEY=\n")
-}
+    @JavascriptInterface
+    fun encodeFrame(frameIndex: Int, base64Jpeg: String): Boolean {
+        return nativeEncoder.encodeFrame(frameIndex, base64Jpeg)
+    }
 
-// Secrets plugin – ignore GEMINI_API_KEY so it never breaks BuildConfig
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-  ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-  ignoreList.add("GEMINI_API_KEY")
-}
+    @JavascriptInterface
+    fun finishNativeEncoder(): String {
+        Log.i(TAG, "finishNativeEncoder called")
+        val result = nativeEncoder.finish()
+        mainHandler.post {
+            onToastRequested("Video export saved to Movies/MCQStudio")
+        }
+        return result
+    }
 
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+    @JavascriptInterface
+    fun saveBlobToStorage(base64Data: String, filename: String, mimeType: String) {
+        try {
+            val bytes = Base64.decode(base64Data, Base64.DEFAULT)
+            val lower = filename.lowercase()
+            val savedLocation: String = when {
+                lower.endsWith(".mp4") || lower.endsWith(".webm") -> {
+                    val temp = java.io.File(context.cacheDir, "export_${System.currentTimeMillis()}.mp4")
+                    temp.writeBytes(bytes)
+                    val loc = StorageHelper.saveVideoToMediaStore(context, temp, filename)
+                    temp.delete()
+                    loc
+                }
+                lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> {
+                    StorageHelper.saveImageToMediaStore(context, bytes, filename)
+                }
+                else -> {
+                    StorageHelper.saveDownloadToMediaStore(context, bytes, filename, mimeType)
+                }
+            }
 
-dependencies {
-  implementation(platform(libs.androidx.compose.bom))
-  implementation(platform(libs.firebase.bom))
-  // implementation(libs.accompanist.permissions)
-  implementation(libs.androidx.activity.compose)
-  // implementation(libs.androidx.camera.camera2)
-  // implementation(libs.androidx.camera.core)
-  // implementation(libs.androidx.camera.lifecycle)
-  // implementation(libs.androidx.camera.view)
-  implementation(libs.androidx.compose.material.icons.core)
-  implementation(libs.androidx.compose.material.icons.extended)
-  implementation(libs.androidx.compose.material3)
-  implementation(libs.androidx.compose.ui)
-  implementation(libs.androidx.compose.ui.graphics)
-  implementation(libs.androidx.compose.ui.tooling.preview)
-  implementation(libs.androidx.core.ktx)
-  // implementation(libs.androidx.datastore.preferences)
-  implementation(libs.androidx.lifecycle.runtime.compose)
-  implementation(libs.androidx.lifecycle.runtime.ktx)
-  implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
-  // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
-  // Uncomment to use Firestore:
-  // implementation(libs.firebase.firestore)
+            mainHandler.post {
+                val msg = "Saved: $savedLocation"
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                onToastRequested(msg)
+            }
+            Log.i(TAG, "Blob saved successfully to $savedLocation")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving blob to storage", e)
+            mainHandler.post {
+                Toast.makeText(context, "Error saving $filename: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
-  // Uncomment ALL FOUR of the following dependencies together to use Firebase Auth and Google
-  // Sign-In via Credential Manager:
-  // implementation(libs.firebase.auth)
-  // implementation(libs.androidx.credentials)
-  // implementation(libs.androidx.credentials.play.services)
-  // implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
-  implementation(libs.kotlinx.coroutines.android)
-  implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
-  implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
-
-  // ========== Media3 Transformer (for faster video export) ==========
-  implementation("androidx.media3:media3-transformer:1.5.1")
-  implementation("androidx.media3:media3-effect:1.5.1")
-  implementation("androidx.media3:media3-common:1.5.1")
-  implementation("androidx.media3:media3-exoplayer:1.5.1")
-  // ================================================================
-
-  testImplementation(libs.androidx.compose.ui.test.junit4)
-  testImplementation(libs.androidx.core)
-  testImplementation(libs.androidx.junit)
-  testImplementation(libs.junit)
-  testImplementation(libs.kotlinx.coroutines.test)
-  testImplementation(libs.robolectric)
-  androidTestImplementation(platform(libs.androidx.compose.bom))
-  androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-  androidTestImplementation(libs.androidx.espresso.core)
-  androidTestImplementation(libs.androidx.junit)
-  androidTestImplementation(libs.androidx.runner)
-  debugImplementation(libs.androidx.compose.ui.test.manifest)
-  debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+    @JavascriptInterface
+    fun showToast(message: String) {
+        mainHandler.post {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 }

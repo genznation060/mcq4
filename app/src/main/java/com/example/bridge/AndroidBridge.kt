@@ -18,7 +18,7 @@ class AndroidBridge(
         private const val TAG = "AndroidBridge"
     }
 
-    private val nativeEncoder = NativeVideoEncoder(context)
+    private val nativeEncoder = Media3VideoEncoder(context)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @JavascriptInterface

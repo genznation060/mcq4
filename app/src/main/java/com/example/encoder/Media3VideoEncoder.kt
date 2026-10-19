@@ -1,18 +1,14 @@
 package com.example.encoder
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
-import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
-import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
@@ -23,11 +19,6 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Media3 Transformer based encoder.
- * Collects frames as temporary images, then composes them into a video.
- * Much more reliable and usually faster than pure MediaCodec + JPEG bridge.
- */
 class Media3VideoEncoder(private val context: Context) {
 
     companion object {
@@ -38,7 +29,6 @@ class Media3VideoEncoder(private val context: Context) {
     private var height = 1080
     private var fps = 30
     private var displayName = "mcq-video.mp4"
-    private var totalFrames = 0
 
     private val frameFiles = mutableListOf<File>()
     private var tempDir: File? = null
@@ -48,7 +38,7 @@ class Media3VideoEncoder(private val context: Context) {
         width: Int,
         height: Int,
         fps: Int,
-        bitrateMbps: Int,   // kept for API compatibility (Transformer uses its own bitrate)
+        bitrateMbps: Int,
         totalFrames: Int,
         filename: String,
         base64AudioWav: String?
@@ -60,7 +50,6 @@ class Media3VideoEncoder(private val context: Context) {
             this.height = height
             this.fps = fps.coerceAtLeast(1)
             this.displayName = filename.ifBlank { "mcq-video.mp4" }
-            this.totalFrames = totalFrames
 
             tempDir = File(context.cacheDir, "mcq_frames_${System.currentTimeMillis()}").apply {
                 mkdirs()
@@ -68,7 +57,7 @@ class Media3VideoEncoder(private val context: Context) {
             frameFiles.clear()
             isRunning.set(true)
 
-            Log.i(TAG, "Media3 encoder started: ${width}x$height @ ${fps}fps, frames=$totalFrames")
+            Log.i(TAG, "Media3 encoder started: ${width}x$height @ ${this.fps}fps, frames=$totalFrames")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start Media3VideoEncoder", e)
@@ -112,7 +101,7 @@ class Media3VideoEncoder(private val context: Context) {
             val editedItems = frameFiles.map { file ->
                 val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
                 EditedMediaItem.Builder(mediaItem)
-                    .setDurationUs((1_000_000L / fps))   // duration of each frame
+                    .setDurationUs(1_000_000L / fps)
                     .setFrameRate(fps)
                     .build()
             }
@@ -143,7 +132,6 @@ class Media3VideoEncoder(private val context: Context) {
             Log.i(TAG, "Starting Media3 Transformer with ${frameFiles.size} frames...")
             transformer.start(composition, outputFile.absolutePath)
 
-            // Wait max 3 minutes
             val finished = latch.await(3, TimeUnit.MINUTES)
 
             if (!finished) {

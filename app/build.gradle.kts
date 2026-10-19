@@ -64,7 +64,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
-  ignoreList.add("GEMINI_API_KEY")          // ← this prevents the "illegal start of expression" error
+  ignoreList.add("GEMINI_API_KEY")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
@@ -113,6 +113,14 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+
+  // ========== Media3 Transformer (for faster video export) ==========
+  implementation("androidx.media3:media3-transformer:1.5.1")
+  implementation("androidx.media3:media3-effect:1.5.1")
+  implementation("androidx.media3:media3-common:1.5.1")
+  implementation("androidx.media3:media3-exoplayer:1.5.1")
+  // ================================================================
+
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

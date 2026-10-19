@@ -1217,45 +1217,7 @@ async function renderOfflineAudio(tStart, tEnd, partDur) {
 }
 
 /* ================= NATIVE DETERMINISTIC FRAME ENCODING ================= */
-// ===== FASTER FRAME LOOP =====
-    let targetCanvas = canvas;
-    if (res === 720) {
-      if (!expC) { expC = document.createElement('canvas'); expC.width = 1280; expC.height = 720; }
-      targetCanvas = expC;
-    }
-
-    const ctx = targetCanvas.getContext('2d', { willReadFrequently: false });
-    const jpegQuality = 0.72;          // lower = much faster (still looks good for video)
-    const yieldEvery = 4;              // only yield to UI every 4 frames
-
-    for (let f = 0; f < totalFrames && !stopRequested; f++) {
-      const t = a + (f / fps);
-      currentTime = t;
-      draw(t);
-
-      if (res === 720 && expC) {
-        expC.getContext('2d').drawImage(canvas, 0, 0, 1280, 720);
-      }
-
-      // Update progress only every few frames (reduces DOM work)
-      if (f % 3 === 0 || f === totalFrames - 1) {
-        const pct = (((f + 1) / totalFrames) * 100).toFixed(1);
-        $('recBar').style.width = pct + '%';
-        $('recTxt').textContent = (f + 1) + ' / ' + totalFrames + ' (' + t.toFixed(1) + 's / ' + partDur.toFixed(1) + 's)';
-      }
-
-      // Faster JPEG
-      const dataUrl = targetCanvas.toDataURL('image/jpeg', jpegQuality);
-      const rawBase64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
-
-      window.AndroidBridge.encodeFrame(f, rawBase64);
-
-      // Only yield occasionally instead of every frame
-      if (f % yieldEvery === 0) {
-        await new Promise(r => setTimeout(r, 0));   // better than requestAnimationFrame here
-      }
-    }
-    // ===== END FASTER FRAME LOOP =====
+async function startNativeDeterministicExport() {
   if (!Q.length) { alert('No questions loaded. Please load a CSV/TSV/XLSX dataset first.'); return; }
   pause();
 
@@ -1310,32 +1272,43 @@ async function renderOfflineAudio(tStart, tEnd, partDur) {
       return startExportFallback();
     }
 
+    // ===== FASTER FRAME LOOP =====
     let targetCanvas = canvas;
     if (res === 720) {
       if (!expC) { expC = document.createElement('canvas'); expC.width = 1280; expC.height = 720; }
       targetCanvas = expC;
     }
 
+    const jpegQuality = 0.72;          // lower = much faster
+    const yieldEvery = 4;              // only yield every 4 frames
+
     for (let f = 0; f < totalFrames && !stopRequested; f++) {
       const t = a + (f / fps);
       currentTime = t;
       draw(t);
+
       if (res === 720 && expC) {
         expC.getContext('2d').drawImage(canvas, 0, 0, 1280, 720);
       }
 
-      const pct = (((f + 1) / totalFrames) * 100).toFixed(1);
-      $('recBar').style.width = pct + '%';
-      $('recTxt').textContent = (f + 1) + ' / ' + totalFrames + ' (' + t.toFixed(1) + 's / ' + partDur.toFixed(1) + 's)';
+      // Update progress only every few frames
+      if (f % 3 === 0 || f === totalFrames - 1) {
+        const pct = (((f + 1) / totalFrames) * 100).toFixed(1);
+        $('recBar').style.width = pct + '%';
+        $('recTxt').textContent = (f + 1) + ' / ' + totalFrames + ' (' + t.toFixed(1) + 's / ' + partDur.toFixed(1) + 's)';
+      }
 
-      const dataUrl = targetCanvas.toDataURL('image/jpeg', 0.92);
+      const dataUrl = targetCanvas.toDataURL('image/jpeg', jpegQuality);
       const rawBase64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
 
       window.AndroidBridge.encodeFrame(f, rawBase64);
 
-      // Yield frame to UI loop
-      await new Promise(r => requestAnimationFrame(r));
+      // Yield only occasionally
+      if (f % yieldEvery === 0) {
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
+    // ===== END FASTER FRAME LOOP =====
 
     const finishResultJson = window.AndroidBridge.finishNativeEncoder();
     try {
